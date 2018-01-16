@@ -15,8 +15,8 @@ This document contains the relevant information for processing and visualizing d
 Function: plot_rkm_time(): This function will make a pdf that has a seperate page for each Tag ID, showing a chart that shows river_kilometer over time. This one is designed for VEMCO
 
 ```{r}
-plot_rkm_time_vemco <- function(df, int_rkm = -100, str_start_datetime, str_end_datetime, pdf_name) {
-  pdf(paste("C:\\Users\\cbolte\\Desktop\\Delta Salmon Project\\River Kilometer by Time\\", pdf_name, ".pdf", sep = "" )) 
+plot_rkm_time_vemco <- function(df, pdf_name, int_rkm = -100, str_start_datetime = "2000-01-01 00:00:00", str_end_datetime = "2050-01-01 00:00:00") {
+  pdf(paste(pdf_name, ".pdf", sep = "" )) 
   df_edit <- subset(df, Detect_rkm > int_rkm)
   df_edit <- subset(df_edit, DetectDate > str_start_datetime & DetectDate < str_end_datetime)
   all_tags <- unique(df$TagID)
@@ -38,8 +38,8 @@ plot_rkm_time_vemco <- function(df, int_rkm = -100, str_start_datetime, str_end_
 
 
 ```{r}
-plot_rkm_time_jsats <- function(df, int_rkm = -100, str_start_datetime, str_end_datetime, pdf_name) {
-  pdf(paste("C:\\Users\\cbolte\\Desktop\\Delta Salmon Project\\River Kilometer by Time\\", pdf_name, ".pdf", sep = "" )) 
+plot_rkm_time_jsats <- function(df, pdf_name, int_rkm = -100, str_start_datetime = "2000-01-01 00:00:00", str_end_datetime = "2050-01-01 00:00:00") {
+  pdf(paste(pdf_name, ".pdf", sep = "" )) 
   df_edit <- subset(df, rkm > int_rkm)
   df_edit <- subset(df_edit, dtf > str_start_datetime & dtf < str_end_datetime)
   all_tags <- unique(df$Hex)
@@ -170,7 +170,7 @@ upriver_movement_vemco <- function(all_detections, df_taglist, min_distance_km, 
     }
   count <- count + 1
     }
-  write.csv(df_removed_detections, "C:\\Users\\cbolte\\Desktop\\Delta Salmon Project\\CSVs\\Removed Detections Upstream Movement.csv")
+  write.csv(df_removed_detections, "Removed Detections from Upstream Movement.csv")
   return(all_detections)
 }
 ```
@@ -216,7 +216,7 @@ upriver_movement_jsats <- function(all_detections, df_taglist, min_distance_km, 
     }
   count <- count + 1
     }
-  write.csv(df_removed_detections, "C:\\Users\\cbolte\\Desktop\\Delta Salmon Project\\CSVs\\Removed Detections Upstream Movement.csv")
+  write.csv(df_removed_detections, "Removed Detections from Upstream Movement.csv")
   return(all_detections)
 }
 ```
