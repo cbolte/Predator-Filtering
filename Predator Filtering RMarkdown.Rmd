@@ -1,0 +1,310 @@
+---
+title: "Predator Filtering Visualization"
+author: "Christopher Bolte"
+date: "January 16, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This document contains the relevant information for processing and visualizing data that will be used in the predator filtering manuscript. The functions should eventually get put into a package that can be installed and used freely.
+
+
+Function: plot_rkm_time(): This function will make a pdf that has a seperate page for each Tag ID, showing a chart that shows river_kilometer over time. This one is designed for VEMCO
+
+```{r}
+plot_rkm_time_vemco <- function(df, int_rkm = -100, str_start_datetime, str_end_datetime, pdf_name) {
+  pdf(paste("C:\\Users\\cbolte\\Desktop\\Delta Salmon Project\\River Kilometer by Time\\", pdf_name, ".pdf", sep = "" )) 
+  df_edit <- subset(df, Detect_rkm > int_rkm)
+  df_edit <- subset(df_edit, DetectDate > str_start_datetime & DetectDate < str_end_datetime)
+  all_tags <- unique(df$TagID)
+  for (tag in all_tags) {
+    df_id <-subset(df_edit, df_edit$TagID == tag)
+    if (nrow(df_id) > 0) {
+    fish_move <- ggplot(df_id, aes(x=DetectDate, y=Detect_rkm, group = TagID)) +
+      geom_point() + geom_line() +
+      ggtitle(paste(tag, "from", str_start_datetime, "to", str_end_datetime)) +
+      xlab("Time After Release") +
+      ylab("River Kilometer")
+   plot(fish_move)
+      }
+   }
+  dev.off()
+}
+
+```
+
+
+```{r}
+plot_rkm_time_jsats <- function(df, int_rkm = -100, str_start_datetime, str_end_datetime, pdf_name) {
+  pdf(paste("C:\\Users\\cbolte\\Desktop\\Delta Salmon Project\\River Kilometer by Time\\", pdf_name, ".pdf", sep = "" )) 
+  df_edit <- subset(df, rkm > int_rkm)
+  df_edit <- subset(df_edit, dtf > str_start_datetime & dtf < str_end_datetime)
+  all_tags <- unique(df$Hex)
+  for (tag in all_tags) {
+    df_id <-subset(df_edit, df_edit$Hex == tag)
+    if (nrow(df_id) > 0) {
+    fish_move <- ggplot(df_id, aes(x=dtf, y=rkm, group = Hex)) +
+      geom_point() + geom_line() +
+      ggtitle(paste(tag, "from", str_start_datetime, "to", str_end_datetime)) +
+      xlab("Time After Release") +
+      ylab("River Kilometer")
+   plot(fish_move)
+      }
+   }
+  dev.off()
+}
+```
+
+
+Function: residence_time()
+
+This function will determine how much time is spent at each receiver, so long as they are at the same river kilometer.
+
+```{r}
+residence_time_vemco <- function(all_detections) {
+  df_residence <- NULL
+  all_tags <- unique(all_detections$TagID)
+  for (tag in all_tags) {
+  print(tag)
+  test_tag <- all_detections[all_detections$TagID == tag, ]
+  test_tag <- test_tag[order(test_tag$DetectDate), ]
+  all_rows <- c(1:nrow(test_tag))
+  first_det <- test_tag$DetectDate[1]
+  for (row in all_rows) {
+    first_rkm <- test_tag$Detect_rkm[row]
+    second_rkm <- test_tag$Detect_rkm[row + 1]
+    if (row == nrow(test_tag)) { #End loop once it gets to the end of the data.frame
+      break
+    }
+    if (first_rkm != second_rkm) { #The receiver location has changed, make this a new residence.
+      tag <- test_tag$TagID[row]
+      study_id <- test_tag$StudyID[row]
+      release <- test_tag$Release_Location[row]
+      last_det <- test_tag$DetectDate[row]
+      res_time_hours <- as.numeric(signif(difftime(last_det, first_det, units = "hours"), digits = 4))
+      receiver_rkm <- first_rkm
+      df_residence = rbind(df_residence, data.frame(study_id, release, tag, receiver_rkm, res_time_hours))
+      first_det <- test_tag$DetectDate[row + 1]
+      }
+    }
+  }
+  #print(df_residence)
+  return(df_residence)
+}
+```
+
+```{r}
+residence_time_jsats <- function(all_detections) {
+  df_residence <- NULL
+  all_tags <- unique(all_detections$Hex)
+  for (tag in all_tags) {
+  print(tag)
+  test_tag <- all_detections[all_detections$Hex == tag, ]
+  test_tag <- test_tag[order(test_tag$dtf), ]
+  all_rows <- c(1:nrow(test_tag))
+  first_det <- test_tag$dtf[1]
+  for (row in all_rows) {
+    first_rkm <- test_tag$rkm[row]
+    second_rkm <- test_tag$rkm[row + 1]
+    if (row == nrow(test_tag)) { #End loop once it gets to the end of the data.frame
+      break
+    }
+    if (first_rkm != second_rkm) { #The receiver location has changed, make this a new residence.
+      tag <- test_tag$Hex[row]
+      last_det <- test_tag$dtf[row]
+      res_time_hours <- as.numeric(signif(difftime(last_det, first_det, units = "hours"), digits = 4))
+      receiver_rkm <- first_rkm
+      df_residence = rbind(df_residence, data.frame(tag, receiver_rkm, res_time_hours))
+      first_det <- test_tag$dtf[row + 1]
+      }
+    }
+  }
+  #print(df_residence)
+  return(df_residence)
+}
+```
+
+
+Function: upriver_movement(): It will take a detection file, then go through every tags detection history and remove all detections after the lowest point detected. This means that if a fish makes a movement above a specified threshold (min_distance_km), the program automatically clean the original detection file. The removed detections will appear in a seperate csv whose location can be specified within the code. The advantage of this code is that it will not remove valuable tag data and it will detect smaller movements that add up to the movement threshold rather than requiring a single, large movement. It can also be altered to look only at detections within a certain reach by adjusting the low/high rkm arguments.
+
+```{r}
+upriver_movement_vemco <- function(all_detections, df_taglist, min_distance_km, low_rkm = 0, high_rkm = 550) {
+  edit_detections <- subset(all_detections, Detect_rkm > low_rkm & Detect_rkm < high_rkm)
+  all_tags <- unique(df_taglist$TagID)
+  df_removed_detections <- NULL
+  count <- 1
+  num_tags <- length(unique(df_taglist$TagID))
+  for (tag in all_tags) {
+    print(paste(count, "/", num_tags))
+    ind_tag <- subset(edit_detections, edit_detections$TagID == tag)
+    ind_tag <- ind_tag[order(ind_tag$DetectDate), ]
+    all_rows <- c(1:nrow(ind_tag))
+    sliding_low <- high_rkm
+    if (nrow(ind_tag) > 0 ) {  
+      for (row in all_rows) {
+        first_rkm <- ind_tag$Detect_rkm[row]
+        second_rkm <- ind_tag$Detect_rkm[row + 1]
+        first_date <- ind_tag$DetectDate[row]
+        second_date <- ind_tag$DetectDate[row + 1]
+        if (row == nrow(ind_tag)) { #Ends the loop once it gets to the end of the data.frame without throwing an error.
+          break
+        }
+        if (second_rkm < first_rkm & second_rkm < sliding_low) { #Reassign the points that are your limit
+          sliding_low <- second_rkm
+        }
+        if (second_rkm == sliding_low) {
+          low_date <- second_date
+        }
+        if (second_rkm - sliding_low > min_distance_km) {
+        final_date <- low_date
+        removed_detections <- ind_tag[(ind_tag$DetectDate > low_date), ] #This needs to be added to new data.frame for ALL tags.
+        df_removed_detections = rbind(df_removed_detections, removed_detections)
+        all_detections <- all_detections[!(all_detections$TagID == tag & all_detections$DetectDate > final_date), ] #Keeps last detection before moving upstream
+        sliding_low <- high_rkm
+        break
+        }
+      }
+    }
+  count <- count + 1
+    }
+  write.csv(df_removed_detections, "C:\\Users\\cbolte\\Desktop\\Delta Salmon Project\\CSVs\\Removed Detections Upstream Movement.csv")
+  return(all_detections)
+}
+```
+
+
+```{r}
+upriver_movement_jsats <- function(all_detections, df_taglist, min_distance_km, low_rkm = 0, high_rkm = 550) {
+  edit_detections <- subset(all_detections, rkm > low_rkm & rkm < high_rkm)
+  all_tags <- unique(df_taglist$Hex)
+  df_removed_detections <- NULL
+  count <- 1
+  num_tags <- length(unique(df_taglist$Hex))
+  for (tag in all_tags) {
+    print(paste(count, "/", num_tags))
+    ind_tag <- subset(edit_detections, edit_detections$Hex == tag)
+    ind_tag <- ind_tag[order(ind_tag$dtf), ]
+    all_rows <- c(1:nrow(ind_tag))
+    sliding_low <- high_rkm
+    if (nrow(ind_tag) > 0 ) {  
+      for (row in all_rows) {
+        first_rkm <- ind_tag$rkm[row]
+        second_rkm <- ind_tag$rkm[row + 1]
+        first_date <- ind_tag$dtf[row]
+        second_date <- ind_tag$dtf[row + 1]
+        if (row == nrow(ind_tag)) { #Ends the loop once it gets to the end of the data.frame without throwing an error.
+          break
+        }
+        if (second_rkm < first_rkm & second_rkm < sliding_low) { #Reassign the points that are your limit
+          sliding_low <- second_rkm
+        }
+        if (second_rkm == sliding_low) {
+          low_date <- second_date
+        }
+        if (second_rkm - sliding_low > min_distance_km) {
+        final_date <- low_date
+        removed_detections <- ind_tag[(ind_tag$dtf > low_date), ] #This needs to be added to new data.frame for ALL tags.
+        df_removed_detections = rbind(df_removed_detections, removed_detections)
+        all_detections <- all_detections[!(all_detections$Hex == tag & all_detections$dtf > final_date), ] #Keeps last detection before moving upstream
+        sliding_low <- high_rkm
+        break
+        }
+      }
+    }
+  count <- count + 1
+    }
+  write.csv(df_removed_detections, "C:\\Users\\cbolte\\Desktop\\Delta Salmon Project\\CSVs\\Removed Detections Upstream Movement.csv")
+  return(all_detections)
+}
+```
+
+
+Function: transit_rate_vemco()
+
+This function will go through a data.frame tag by tag and determine how long it took in kilometers per hour (km/hr) to get detected on each receiver.
+
+```{r}
+transit_rate_vemco <- function(df_all_detections, high_rkm, low_rkm) {
+  df_transit <- NULL # Make an empty dataframe that will show first_rkm, second_rkm, and transit time.
+  rkm_det <- subset(df_all_detections, Detect_rkm > low_rkm & Detect_rkm < high_rkm) #All detections between two river kilometers
+  #Now we only have detections within specified river kilometers, need to use rkm_det.
+  all_tags <- unique(rkm_det$TagID)
+  for (tag in all_tags) { #iterate through all tags
+    print(tag)
+    ind_tag <- subset(rkm_det, TagID == tag)
+    ind_tag <- ind_tag[order(ind_tag$DetectDate), ]
+    all_rows <- c(1:nrow(ind_tag))
+    for (row in all_rows) { #iterate through all detection rows for each tag
+      #Need to get last detection at a receiver, then first detection at the next receiver, then calculate the time between them.
+      first_receiver <- ind_tag$Location[row]
+      first_rkm <- ind_tag$Detect_rkm[row]
+      first_dtf <- ind_tag$DetectDate[row]
+      second_receiver <- ind_tag$Location[row + 1]
+      second_rkm <- ind_tag$Detect_rkm[row + 1]
+      second_dtf <- ind_tag$DetectDate[row + 1]
+      first_time <- ind_tag$DetectDate[row]
+      second_time <- ind_tag$DetectDate[row + 1]
+      diff_rkm <- (first_rkm - second_rkm) #km to m
+      if (row == nrow(ind_tag)) {
+        break
+      }
+      if (first_rkm != second_rkm & diff_rkm != 0 & diff_rkm > 1) {
+        transit_time <- as.numeric(difftime(second_time, first_time, units = "hour"))
+        #diff_rkm_in_meters <- diff_rkm * 1000
+        #fl <- ind_tag$Length[row] / 1000 #mm to m
+        #transit_rate <- (diff_rkm_in_meters/fl)/transit_time
+        transit_rate <- diff_rkm/transit_time
+        #print(transit_rate)
+        df_transit <- rbind(df_transit, data.frame(tag, first_receiver, first_rkm, first_dtf, second_receiver, second_rkm, second_dtf, diff_rkm, transit_time, transit_rate))
+      }
+    }
+  }
+  return(df_transit)
+}
+```
+
+
+```{r}
+transit_rate_jsats <- function(df_all_detections, high_rkm, low_rkm) {
+  df_transit <- NULL # Make an empty dataframe that will show first_rkm, second_rkm, and transit time.
+  rkm_det <- subset(df_all_detections, rkm > low_rkm & rkm < high_rkm) #All detections between two river kilometers
+  #Now we only have detections within specified river kilometers, need to use rkm_det.
+  all_tags <- unique(rkm_det$Hex)
+  for (tag in all_tags) { #iterate through all tags
+    print(tag)
+    ind_tag <- subset(rkm_det, Hex == tag)
+    ind_tag <- ind_tag[order(ind_tag$dtf), ]
+    all_rows <- c(1:nrow(ind_tag))
+    for (row in all_rows) { #iterate through all detection rows for each tag
+      #Need to get last detection at a receiver, then first detection at the next receiver, then calculate the time between them.
+      first_receiver <- ind_tag$Location[row]
+      first_rkm <- ind_tag$rkm[row]
+      first_dtf <- ind_tag$dtf[row]
+      second_receiver <- ind_tag$Location[row + 1]
+      second_rkm <- ind_tag$rkm[row + 1]
+      second_dtf <- ind_tag$dtf[row + 1]
+      first_time <- ind_tag$dtf[row]
+      second_time <- ind_tag$dtf[row + 1]
+      diff_rkm <- (first_rkm - second_rkm) #km to m
+      if (row == nrow(ind_tag)) {
+        break
+      }
+      if (first_rkm != second_rkm & diff_rkm != 0 & diff_rkm > 1) {
+        transit_time <- as.numeric(difftime(second_time, first_time, units = "hour"))
+        #diff_rkm_in_meters <- diff_rkm * 1000
+        #fl <- ind_tag$Length[row] / 1000 #mm to m
+        #transit_rate <- (diff_rkm_in_meters/fl)/transit_time
+        transit_rate <- diff_rkm/transit_time
+        #print(transit_rate)
+        df_transit <- rbind(df_transit, data.frame(tag, first_receiver, first_rkm, first_dtf, second_receiver, second_rkm, second_dtf, diff_rkm, transit_time, transit_rate))
+      }
+    }
+  }
+  return(df_transit)
+}
+```
+
+
