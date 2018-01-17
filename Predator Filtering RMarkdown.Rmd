@@ -14,6 +14,9 @@ This document contains the relevant information for processing and visualizing d
 
 Function: plot_rkm_time(): This function will make a pdf that has a seperate page for each Tag ID, showing a chart that shows river_kilometer over time. This one is designed for VEMCO
 
+This ones for Sarah
+<*}}}><
+
 ```{r}
 plot_rkm_time_vemco <- function(df, pdf_name, int_rkm = -100, str_start_datetime = "2000-01-01 00:00:00", str_end_datetime = "2050-01-01 00:00:00") {
   pdf(paste(pdf_name, ".pdf", sep = "" )) 
